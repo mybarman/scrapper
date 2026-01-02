@@ -46,7 +46,7 @@ async function scrapeCaseInternal(browser, { caseType, caseNumber, caseYear }) {
 export async function scrapeCase({ caseType, caseNumber, caseYear }) {
     const browser = await chromium.launch({
         headless: process.env.HEADLESS !== "false",
-        slowMo: 10
+        slowMo: 100
     });
 
     try {
