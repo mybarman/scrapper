@@ -1,5 +1,5 @@
 import express from "express";
-import { scrapeCase } from "./core.js";
+import { scrapeCase, scrapeMultiple } from "./core.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,6 +31,25 @@ app.post("/scrape", async (req, res) => {
     } else {
         return res.status(500).json(result);
     }
+});
+
+app.post("/scrape-multiple", async (req, res) => {
+    const { caseType, caseNumber, caseYear, numberOfCases } = req.body;
+
+    if (!caseType || !caseNumber || !caseYear || !numberOfCases) {
+        return res.status(400).json({
+            success: false,
+            error: "Missing required parameters: caseType, caseNumber, caseYear, numberOfCases"
+        });
+    }
+
+    console.log(`[API] Received multi-scrape request for ${caseType}/${caseNumber} to +${numberOfCases}`);
+
+    const results = await scrapeMultiple({ caseType, caseNumber, caseYear, numberOfCases });
+
+    // Identify if completely failed or partially success?
+    // We just return the array as requested.
+    return res.json(results);
 });
 
 app.listen(PORT, () => {
