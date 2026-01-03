@@ -7,8 +7,22 @@ import { processSearchResults } from "./flows/list.js";
  * Internal logic to scrape a single case using an existing browser instance.
  * Opens a new page, scrapes, and closes the page.
  */
-async function scrapeCaseInternal(browser, { caseType, caseNumber, caseYear }) {
-    const page = await browser.newPage();
+/**
+ * Internal logic to scrape a single case.
+ * Accepts a Browser (creates new page) or a Page (reuses it).
+ */
+export async function scrapeCaseInternal(browserOrPage, { caseType, caseNumber, caseYear }) {
+    let page;
+    let shouldClosePage = false;
+
+    // Determine if input is Browser/Context (has .newPage) or Page (has .goto)
+    if (typeof browserOrPage.newPage === 'function') {
+        page = await browserOrPage.newPage();
+        shouldClosePage = true;
+    } else {
+        page = browserOrPage;
+    }
+
     let result = { success: false, error: null };
 
     try {
@@ -29,7 +43,9 @@ async function scrapeCaseInternal(browser, { caseType, caseNumber, caseYear }) {
             error: error.message || "Unknown error occurred"
         };
     } finally {
-        await page.close();
+        if (shouldClosePage) {
+            await page.close();
+        }
     }
 
     return result;

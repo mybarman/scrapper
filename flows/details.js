@@ -40,13 +40,24 @@ export async function processCaseOrders(page, caseRef, srNo, { caseType, caseYea
         await uploadContentToVercel(parsed.detailsHtml, `${caseType}/y-${caseYear}/${number}/${srNo}/Details/case_details.html`);
     }
 
-    for (const o of parsed.orders) {
-        if (!o.pdfHref) continue;
+    // Sort orders by date descending to find the latest
+    // Date format usually DD-MM-YYYY
+    const sortedOrders = parsed.orders.sort((a, b) => {
+        const parseDate = (d) => {
+            if (!d) return 0;
+            const [day, month, year] = d.split('-').map(Number);
+            return new Date(year, month - 1, day).getTime();
+        };
+        return parseDate(b.orderDate) - parseDate(a.orderDate);
+    });
 
+    const latestOrder = sortedOrders[0];
+
+    if (latestOrder && latestOrder.pdfHref) {
         // Path: Type / y-Year / Number/ SrNo_X / Date.pdf
-        const safeDate = o.orderDate.replace(/[^a-zA-Z0-9-]/g, "_");
+        const safeDate = latestOrder.orderDate.replace(/[^a-zA-Z0-9-]/g, "_");
         const filePath = `${caseType}/y-${caseYear}/${number}/${srNo}/Orders/${safeDate}.pdf`;
 
-        await uploadUrlToVercel(page, o.pdfHref, filePath);
+        await uploadUrlToVercel(page, latestOrder.pdfHref, filePath);
     }
 }
