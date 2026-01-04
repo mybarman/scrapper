@@ -4,7 +4,6 @@ import { scrapeCaseInternal } from "./core.js";
 
 // -- Configuration --
 const API_BASE_URL = "https://caseinference.vercel.app" || "http://localhost:3000"; // Adjust default as needed
-const API_SECRET = process.env.API_SECRET || "";
 
 /**
  * Checks if a case exists/should be skipped via the external API.
@@ -17,8 +16,7 @@ async function checkCaseStatus(caseType, caseNumber, caseYear) {
         const response = await fetch(url, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                ...(API_SECRET ? { "Authorization": `Bearer ${API_SECRET}` } : {})
+                "Content-Type": "application/json"
             },
             body: JSON.stringify(body)
         });
@@ -73,27 +71,9 @@ async function saveCaseResult(caseType, caseNumber, caseYear, result) {
 }
 
 /**
- * Main Worker Loop
+ * Logic to process a single case type indefinitely until stop condition.
  */
-async function runWorker() {
-    // Parse args: node worker.js <caseType> <startNumber> <year>
-    const args = process.argv.slice(2);
-    if (args.length < 3) {
-        console.error("Usage: node worker.js <caseType> <startNumber> <year>");
-        process.exit(1);
-    }
-
-    const [caseType, startNumberStr, caseYear] = args;
-    const startNumber = parseInt(startNumberStr, 10);
-
-    console.log(`Starting Worker for ${caseType} / ${caseYear} from #${startNumber}`);
-
-    // Launch Shared Browser
-    const browser = await chromium.launch({
-        headless: process.env.HEADLESS !== "false",
-        slowMo: 100
-    });
-
+export async function processCaseType(browser, caseType, startNumber, caseYear) {
     let currentNum = startNumber;
     let consecutiveNotFound = 0;
 
@@ -106,16 +86,16 @@ async function runWorker() {
 
             // 1. Check Stop Condition
             if (consecutiveNotFound >= 5) {
-                console.log("Stopping: 5 consecutive records not found.");
+                console.log(`[${caseType}] Stopping: 5 consecutive records not found.`);
                 break;
             }
 
-            console.log(`\n--- Processing Case ${caseNumber} ---`);
+            console.log(`\n--- [${caseType}] Processing Case ${caseNumber} ---`);
 
             // 2. Check API (Idempotency)
             const { shouldSkip } = await checkCaseStatus(caseType, caseNumber, caseYear);
             if (shouldSkip) {
-                console.log(`Skipping ${caseNumber}: Already exists in DB.`);
+                console.log(`[${caseType}] Skipping ${caseNumber}: Already exists in DB.`);
                 currentNum++;
                 consecutiveNotFound = 0;
                 continue;
@@ -132,7 +112,7 @@ async function runWorker() {
             // 4. Update Consecutive Count
             if (!result.success && result.error === "Record doesn't exist") {
                 consecutiveNotFound++;
-                console.warn(`Record not found. Consecutive: ${consecutiveNotFound}`);
+                console.warn(`[${caseType}] Record not found. Consecutive: ${consecutiveNotFound}`);
             } else if (result.success) {
                 consecutiveNotFound = 0;
             }
@@ -151,12 +131,43 @@ async function runWorker() {
             // Move to next
             currentNum++;
         }
-    } catch (err) {
-        console.error("Worker Fatal Error:", err);
     } finally {
-        await browser.close();
-        console.log("Worker finished.");
+        if (page) await page.close();
     }
 }
 
-runWorker();
+/**
+ * Main Worker Entrypoint
+ */
+async function runWorkerScript() {
+    // Only run if called directly
+    if (process.argv[1] && process.argv[1].endsWith('worker.js')) {
+        // Parse args: node worker.js <caseType> <startNumber> <year>
+        const args = process.argv.slice(2);
+
+        // If args are missing, do not run (could be imported)
+        if (args.length < 3) return;
+
+        const [caseType, startNumberStr, caseYear] = args;
+        const startNumber = parseInt(startNumberStr, 10);
+
+        console.log(`Starting Worker for ${caseType} / ${caseYear} from #${startNumber}`);
+
+        // Launch Browser
+        const browser = await chromium.launch({
+            headless: process.env.HEADLESS !== "false",
+            slowMo: 100
+        });
+
+        try {
+            await processCaseType(browser, caseType, startNumber, caseYear);
+        } catch (err) {
+            console.error("Worker Fatal Error:", err);
+        } finally {
+            await browser.close();
+            console.log("Worker finished.");
+        }
+    }
+}
+
+runWorkerScript();
