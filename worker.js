@@ -27,8 +27,11 @@ async function checkCaseStatus(caseType, caseNumber, caseYear) {
         }
 
         const data = await response.json();
-        // data structure assumed: { exists: boolean, status: string }
-        return { shouldSkip: data.exists && data.status === "FOUND" };
+        // data structure assumed: { exists: boolean, status: string, nextCaseNumber?: number }
+        return {
+            shouldSkip: data.exists && data.status === "FOUND",
+            nextCaseNumber: data.nextCaseNumber
+        };
 
     } catch (error) {
         console.error(`[API Check] Error:`, error.message);
@@ -93,10 +96,17 @@ export async function processCaseType(browser, caseType, startNumber, caseYear) 
             console.log(`\n--- [${caseType}] Processing Case ${caseNumber} ---`);
 
             // 2. Check API (Idempotency)
-            const { shouldSkip } = await checkCaseStatus(caseType, caseNumber, caseYear);
+            const { shouldSkip, nextCaseNumber } = await checkCaseStatus(caseType, caseNumber, caseYear);
             if (shouldSkip) {
                 console.log(`[${caseType}] Skipping ${caseNumber}: Already exists in DB.`);
-                currentNum++;
+
+                if (nextCaseNumber && parseInt(nextCaseNumber) > currentNum) {
+                    console.log(`[${caseType}] Jumping to ${nextCaseNumber} as suggested by API.`);
+                    currentNum = parseInt(nextCaseNumber);
+                } else {
+                    currentNum++;
+                }
+
                 consecutiveNotFound = 0;
                 continue;
             }
